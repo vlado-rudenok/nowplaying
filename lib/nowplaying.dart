@@ -25,7 +25,10 @@ class NowPlaying with WidgetsBindingObserver {
   static const _refreshPeriod = const Duration(seconds: 1);
 
   StreamController<NowPlayingTrack>? _controller;
+  StreamController<NowPlayingState>? _stateController;
+
   Stream<NowPlayingTrack> get stream => _controller!.stream;
+  Stream<NowPlayingState> get state => _stateController!.stream;
 
   static NowPlaying instance = NowPlaying._();
   NowPlaying._();
@@ -50,8 +53,11 @@ class NowPlaying with WidgetsBindingObserver {
     _controller = StreamController<NowPlayingTrack>.broadcast();
     _controller!.add(NowPlayingTrack.notPlaying);
 
+    _stateController = StreamController<NowPlayingState>.broadcast();
+
+
     await _bindToWidgetsBinding();
-    if (isAndroid) _channel.setMethodCallHandler(_handler);
+    _channel.setMethodCallHandler(_handler);
     if (isIOS) _refreshTimer = Timer.periodic(_refreshPeriod, _refresh);
 
     final info = await PackageInfo.fromPlatform();
@@ -73,6 +79,21 @@ class NowPlaying with WidgetsBindingObserver {
       _refreshTimer?.cancel();
       _refreshTimer = null;
     }
+  }
+
+  void update({
+    required String artist,
+    required String title,
+    String? artwork,
+  })  {
+     _channel.invokeMethod(
+      'update',
+      {
+        'title': title,
+        'artist': artist,
+        'artwork': artwork,
+      },
+    );
   }
 
   void _updateAndNotifyFor(NowPlayingTrack track) {
@@ -120,9 +141,13 @@ class NowPlaying with WidgetsBindingObserver {
 
   // Android
   Future<dynamic> _handler(MethodCall call) async {
-    if (call.method == 'track') {
+    if (isAndroid && call.method == 'track') {
       final data = Map<String, Object?>.from(call.arguments[0] ?? {});
       _updateAndNotifyFor(NowPlayingTrack.fromJson(data));
+    } else if (isIOS && call.method == 'pause') {
+      _stateController?.add(NowPlayingState.paused);
+    } else if (isIOS && call.method == 'play') {
+      _stateController?.add(NowPlayingState.playing);
     }
     return true;
   }

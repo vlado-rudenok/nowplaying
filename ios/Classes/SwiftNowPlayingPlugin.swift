@@ -7,6 +7,14 @@ public class SwiftNowPlayingPlugin: NSObject, FlutterPlugin {
     let channel = FlutterMethodChannel(name: "gomes.com.es/nowplaying", binaryMessenger: registrar.messenger())
     let instance = SwiftNowPlayingPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    MPRemoteCommandCenter.shared().pauseCommand.addTarget { event in
+        channel.invokeMethod("pause", arguments: nil)
+        return MPRemoteCommandHandlerStatus.success
+    }
+    MPRemoteCommandCenter.shared().playCommand.addTarget { event in
+        channel.invokeMethod("play", arguments: nil)
+        return MPRemoteCommandHandlerStatus.success
+    }
   }
 
   var trackData: [String: Any?] = [:]
@@ -51,8 +59,57 @@ public class SwiftNowPlayingPlugin: NSObject, FlutterPlugin {
 
           result(trackData)
           break;
+      case "update":
+       
+        
+        guard  let args = call.arguments as? [String:String], let artist = args["artist"], let title = args["title"] else {
+            return
+        }
+        
+        guard let artwork = args["artwork"] else {
+            let nowPlayingInfo: [String: Any] = [
+                MPMediaItemPropertyArtist: artist,
+                MPMediaItemPropertyTitle: title,
+            ]
+
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            return
+        }
+
+        getArt(url: artwork, completion: { artwork in
+            let nowPlayingInfo: [String: Any] = [
+                MPMediaItemPropertyArtist: artist,
+                MPMediaItemPropertyTitle: title,
+                MPMediaItemPropertyArtwork: artwork
+            ]
+
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        })
       default:
           result(FlutterMethodNotImplemented)
     }
   }
+
+    func getData(from url: URL, completion: @escaping (UIImage?) -> Void) {
+           URLSession.shared.dataTask(with: url, completionHandler: {(data, response, error) in
+               if let data = data {
+                   completion(UIImage(data:data))
+               }
+           })
+               .resume()
+       }
+
+    func getArt(url: String, completion: @escaping (MPMediaItemArtwork) -> Void) {
+           guard let url = URL(string: url) else { return }
+           getData(from: url) { [weak self] image in
+               guard let self = self,
+                   let downloadedImage = image else {
+                       return
+               }
+               let artwork = MPMediaItemArtwork.init(boundsSize: downloadedImage.size, requestHandler: { _ -> UIImage in
+                   return downloadedImage
+               })
+               completion(artwork)
+           }
+       }
 }
